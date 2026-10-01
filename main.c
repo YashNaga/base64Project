@@ -46,18 +46,19 @@ int main() {
 			}
 
 			outputBuffer[outIndex] = '\0';
-			printf("%s", outputBuffer);
+			printf("%s\n", outputBuffer);
 		}
 
 		if(strcmp(opts, "decode") == 0 || strcmp(opts, "Decode") == 0 || strcmp(opts, "DECODE") == 0) {
-			// printf("Enter a string to be decoded: ");
-			// if(fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) {
-			// 	inputBuffer[strcspn(inputBuffer, "\n")] = '\0';
-			// }
+			printf("Enter a string to be decoded: ");
+			if(fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) {
+				inputBuffer[strcspn(inputBuffer, "\n")] = '\0';
+			}
 
-			// int expectedOutputSize = ((strlen(inputBuffer) + 2) / 3) * 4 + 1;	 // Rounds up to the nearest
+			int expectedOutputSize = ((strlen(inputBuffer) + 2) / 3) * 4 + 1;  // Rounds up to the nearest
 			// multiple of 3, * 4 to account for 3 bytes turning into 4 base64 char including padding, and + 1 for null
 			// terminator
+			// char testStr[32] = "aGVsbG8=";
 			char outputBuffer[1000];
 
 			char stream[4];
@@ -67,8 +68,15 @@ int main() {
 
 			while(remainingBytes > 0) {
 				int bytesToProcess = (remainingBytes >= 4) ? 4 : remainingBytes;
+				memcpy(stream, streamCursor, bytesToProcess);
+
 				decoding(stream, bytesToProcess, outputBuffer, &outIndex);
+
+				streamCursor += bytesToProcess;
+				remainingBytes -= bytesToProcess;
 			}
+			outputBuffer[outIndex] = '\0';
+			printf("%s\n", outputBuffer);
 		}
 	}
 
@@ -77,11 +85,7 @@ int main() {
 
 char *encoding(const char *input, int inputLength, char *output, int *outputIndex) {
 	if(inputLength == 3) {
-		u32 byte1 = input[0];
-		u32 byte2 = input[1];
-		u32 byte3 = input[2];
-
-		u32 packed = (byte1 << 16) | (byte2 << 8) | byte3;	// 00000000 AAAAAAAA BBBBBBBB CCCCCCCC
+		u32 packed = (input[0] << 16) | (input[1] << 8) | input[2];	 // 00000000 AAAAAAAA BBBBBBBB CCCCCCCC
 
 		u32 chunk1 = (packed >> 18) & 63;  // 00000000 00000000 00000000 00AAAAAA
 		u32 chunk2 = (packed >> 12) & 63;  // 00000000 00000000 00000000 00AABBBB
@@ -122,7 +126,6 @@ int decoderLookup(const char input) {
 	int i;
 	for(i = 0; i < strlen(kBase64Chars); i++) {
 		if(kBase64Chars[i] == input) {
-			printf("%c is in index: %d", input, i);
 			return i;
 		}
 	}
@@ -133,15 +136,28 @@ int decoderLookup(const char input) {
 }
 
 char *decoding(const char *input, int inputLength, char *output, int *outputIndex) {
-	// Take a char in BASE64 lets say 'C' and find its position in kBase64Chars which would be 2,
-	// Then we take the binary value of 2 and we | pack it into a u32 & mask it with 255
-	if(inputLength == 4) {
-		printf("Index: %d", decoderLookup(input[0]));
-		u32 packed = (decoderLookup(input[0]) << 16) | (decoderLookup(input[0]) << 8) | (decoderLookup(input[0]) << 16);
+	if(input[2] == '=' && input[3] == '=') {
+		u32 packed = (decoderLookup(input[0]) << 18) | (decoderLookup(input[1]) << 12);
+		u32 chunk1 = (packed >> 16) & 255;
+		output[(*outputIndex)++] = chunk1;
+	} else if(input[3] == '=') {
+		u32 packed = (decoderLookup(input[0]) << 18) | (decoderLookup(input[1]) << 12) | (decoderLookup(input[2]) << 6);
+		u32 chunk1 = (packed >> 16) & 255;
+		u32 chunk2 = (packed >> 8) & 255;
+		output[(*outputIndex)++] = chunk1;
+		output[(*outputIndex)++] = chunk2;
+	} else if(inputLength == 4) {
+		u32 packed = (decoderLookup(input[0]) << 18) | (decoderLookup(input[1]) << 12) |
+					 (decoderLookup(input[2]) << 6) | decoderLookup(input[3]);
+
+		u32 chunk1 = (packed >> 16) & 255;
+		u32 chunk2 = (packed >> 8) & 255;
+		u32 chunk3 = packed & 255;
+
+		output[(*outputIndex)++] = chunk1;
+		output[(*outputIndex)++] = chunk2;
+		output[(*outputIndex)++] = chunk3;
 	}
 
 	return output;
 }
-// decoding user input
-// How do effeciently look up a characters index backwards
-// Think about how your gonna build the bits in reverse
